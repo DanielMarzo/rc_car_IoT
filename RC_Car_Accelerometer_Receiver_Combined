@@ -1,0 +1,276 @@
+#include <SPI.h>
+#include <RH_NRF24.h>
+#include <Firebase_ESP_Client.h>
+#include "addons/TokenHelper.h"
+#include "addons/RTDBHelper.h"
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+#include <Wire.h>
+#ifdef ESP32
+#include <WiFi.h>
+#endif
+
+#define WIFI_SSID "ufdevice"
+#define WIFI_PASSWORD "gogators"
+#define API_KEY "AIzaSyBFFyscZA31a09ptrLpEMPgJp6dBDglppk"
+#define DATABASE_URL "https://rc-car-8e3cd-default-rtdb.firebaseio.com/"
+
+#define CE 4
+#define CSN 5
+
+FirebaseData fbdb;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+Adafruit_MPU6050 mpu;
+
+bool signupOK = false;
+float accX = 0.0;
+float accY = 0.0;
+float velocityX = 0.0;
+float velocityY = 0.0;
+float deltaTime = 0.1;
+int i = 0;
+ 
+RH_NRF24 nrf24(CE, CSN);
+//RH_ASK driver(2000, 4, 0, 2); // ESP8266 or ESP32: do not use pin 11 or 2
+
+//byte motorMovement[2];
+
+struct Data {
+    int leftMotor;
+    int rightMotor;
+} receivedData;
+
+const int leftMotor = 14;
+const int rightMotor = 12;
+
+const int freq = 2000;
+const int motorChannelLeft = 0;
+const int motorChannelRight = 1;
+const int resolution = 12;
+
+ 
+void setup() 
+{
+  Serial.begin(9600);
+  while (!Serial) ; // wait for serial port to connect. Needed for Leonardo only
+  if (!nrf24.init()) {
+    Serial.println("init failed");
+  }
+  // Defaults after init are 2.402 GHz (channel 2), 2Mbps, 0dBm
+  if (!nrf24.setChannel(22)) {
+    Serial.println("setChannel failed");
+  }
+
+  if (!nrf24.setRF(RH_NRF24::DataRate2Mbps, RH_NRF24::TransmitPower0dBm)){
+    Serial.println("setRF failed");    
+  }
+
+  ledcSetup(motorChannelLeft, freq, resolution);
+  ledcAttachPin(leftMotor, motorChannelLeft);
+
+  ledcSetup(motorChannelRight, freq, resolution);
+  ledcAttachPin(rightMotor, motorChannelRight);
+
+  //accelerometer
+  Serial.println("Adafruit MPU6050 test!");
+
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.println("Connecting to WiFi");
+  while(WiFi.status() != WL_CONNECTED){
+    Serial.print('.');
+    delay(200);
+  }
+
+  Serial.println();
+  Serial.print("Connected with IP:");
+  Serial.println(WiFi.localIP());
+  Serial.println();
+
+  config.api_key = API_KEY;
+  config.database_url = DATABASE_URL;
+  if(Firebase.signUp(&config, &auth, "", "")){
+    Serial.println("sign up OK");
+    signupOK = true;
+  }
+  else{
+    Serial.printf("%s\n", config.signer.signupError.message.c_str());
+  }
+
+  config.token_status_callback = tokenStatusCallback;
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+
+  while (!Serial)
+    delay(10);
+
+  Serial.println("Adafruit MPU6050 test!");
+
+  if (!mpu.begin()) {
+    Serial.println("Failed to find MPU6050 chip");
+    while (1) {
+      delay(10);
+    }
+  }
+  Serial.println("MPU6050 Found!");
+
+  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+  Serial.print("Accelerometer range set to: ");
+  switch (mpu.getAccelerometerRange()) {
+  case MPU6050_RANGE_2_G:
+    Serial.println("+-2G");
+    break;
+  case MPU6050_RANGE_4_G:
+    Serial.println("+-4G");
+    break;
+  case MPU6050_RANGE_8_G:
+    Serial.println("+-8G");
+    break;
+  case MPU6050_RANGE_16_G:
+    Serial.println("+-16G");
+    break;
+  }
+  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+  Serial.print("Gyro range set to: ");
+  switch (mpu.getGyroRange()) {
+  case MPU6050_RANGE_250_DEG:
+    Serial.println("+- 250 deg/s");
+    break;
+  case MPU6050_RANGE_500_DEG:
+    Serial.println("+- 500 deg/s");
+    break;
+  case MPU6050_RANGE_1000_DEG:
+    Serial.println("+- 1000 deg/s");
+    break;
+  case MPU6050_RANGE_2000_DEG:
+    Serial.println("+- 2000 deg/s");
+    break;
+  }
+
+  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+  Serial.print("Filter bandwidth set to: ");
+  switch (mpu.getFilterBandwidth()) {
+  case MPU6050_BAND_260_HZ:
+    Serial.println("260 Hz");
+    break;
+  case MPU6050_BAND_184_HZ:
+    Serial.println("184 Hz");
+    break;
+  case MPU6050_BAND_94_HZ:
+    Serial.println("94 Hz");
+    break;
+  case MPU6050_BAND_44_HZ:
+    Serial.println("44 Hz");
+    break;
+  case MPU6050_BAND_21_HZ:
+    Serial.println("21 Hz");
+    break;
+  case MPU6050_BAND_10_HZ:
+    Serial.println("10 Hz");
+    break;
+  case MPU6050_BAND_5_HZ:
+    Serial.println("5 Hz");
+    break;
+  }
+  Serial.println("");
+  delay(100);
+}
+ 
+ 
+void loop() {
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
+    
+  // Get acceleration from accelerometer
+  accX = abs(a.acceleration.x);
+  accY = abs(a.acceleration.y);
+
+  // Calculate velocity using the accelerometer data
+  velocityX = accX * deltaTime;
+  velocityY = accY * deltaTime;
+
+  // Calculate overall speed
+  float speed = sqrt(velocityX * velocityX + velocityY * velocityY);
+
+  Serial.print("Speed: ");
+  Serial.print(speed, 2);
+  Serial.println(" m/s");
+  Serial.println("");
+
+  Firebase.RTDB.setFloat(&fbdb, "Sensor/speed", speed);
+
+  if (nrf24.waitAvailableTimeout(500)) { 
+    uint8_t len = sizeof(Data);
+    if (nrf24.recv((uint8_t*)&receivedData, &len)) { // usign objects now????
+
+      //object
+      Serial.print("Received integers: ");
+      Serial.print(receivedData.leftMotor);
+      Serial.print(", ");
+      Serial.println(receivedData.rightMotor);
+
+      //object
+      if(receivedData.leftMotor > 100 && receivedData.rightMotor > 100) { //both motors greater than 500
+
+        receivedData.leftMotor += 2000;
+        receivedData.rightMotor += 2000;
+
+        if(receivedData.leftMotor > 4095) {
+          receivedData.leftMotor = 4095;
+        }
+        if(receivedData.rightMotor > 4095) {
+          receivedData.rightMotor = 4095;
+        }
+
+        printStatement();
+      }
+      else if(receivedData.leftMotor < 100 && receivedData.rightMotor > 100) { //left motor less than 500; right, greater
+
+        receivedData.leftMotor = 0;
+        receivedData.rightMotor += 2000;
+
+        if(receivedData.rightMotor > 4095) {
+          receivedData.rightMotor = 4095;
+        }
+
+        printStatement();
+      }
+      else if(receivedData.leftMotor > 100 && receivedData.rightMotor < 100) { //right motor less than 500; left, greater
+
+        receivedData.leftMotor += 2000;
+        receivedData.rightMotor = 0;
+
+        if(receivedData.leftMotor > 4095) {
+          receivedData.leftMotor = 4095;
+        }
+
+        printStatement();
+      }
+      else {
+        ledcWrite(motorChannelLeft, 0);
+        ledcWrite(motorChannelRight, 0);
+
+        printStatement();
+      }
+      
+    }
+    else {
+      Serial.println("recv failed");
+    }
+  }
+  else {
+    Serial.println("No reply, is nrf24_server running?");
+  }
+  delay(100);
+}
+
+void printStatement(){
+  Serial.print("Left Motor: ");
+  Serial.print(receivedData.leftMotor);
+  Serial.print(" | ");
+  Serial.print("Right Motor: ");
+  Serial.println(receivedData.rightMotor);
+  ledcWrite(motorChannelLeft, receivedData.leftMotor);
+  ledcWrite(motorChannelRight, receivedData.rightMotor);
+}
