@@ -10,9 +10,6 @@
 RH_NRF24 nrf24(CE, CSN);
 //RH_ASK driver(2000, 4, 0, 2); // ESP8266 or ESP32: do not use pin 11 or 2
 
-// const int potLeftPin = 33; // Connect to the wiper of the potentiometer
-// const int potRightPin = 34; // Connect to the wiper of the potentiometer
-
 //byte motorMovement[2];
 
 struct Data {
@@ -74,7 +71,8 @@ void loop()
     // Should be a reply message for us now   
     //if (nrf24.recv(buf, &len)){
     //if (nrf24.read(movement, sizeof(movement))){ //Trying to receive data as an array
-    if (read(&receivedData, sizeof(Data))){ // usign objects now????
+    uint8_t len = sizeof(Data);
+    if (nrf24.recv((uint8_t*)&receivedData, &len)) { // usign objects now????
 
       //og
       //Serial.print("Speed received: ");
@@ -119,7 +117,7 @@ void loop()
       // }
 
       //object
-      if(receivedData.leftMotor > 500 && receivedData.rightMotor > 500){ //both motors greater than 500
+      if(receivedData.leftMotor > 100 && receivedData.rightMotor > 100) { //both motors greater than 500
 
         receivedData.leftMotor += 2000;
         receivedData.rightMotor += 2000;
@@ -131,15 +129,9 @@ void loop()
           receivedData.rightMotor = 4095;
         }
 
-        Serial.print("Left Motor: ");
-        Serial.print(receivedData.leftMotor);
-        Serial.print(" | ");
-        Serial.print("Right Motor: ");
-        Serial.println(receivedData.rightMotor);
-        ledcWrite(motorChannelLeft, receivedData.leftMotor);
-        ledcWrite(motorChannelRight, receivedData.rightMotor);
+        printStatement();
       }
-      else if(receivedData.leftMotor < 500 && receivedData.rightMotor > 500){ //left motor less than 500; right, greater
+      else if(receivedData.leftMotor < 100 && receivedData.rightMotor > 100) { //left motor less than 500; right, greater
 
         receivedData.leftMotor = 0;
         receivedData.rightMotor += 2000;
@@ -148,15 +140,9 @@ void loop()
           receivedData.rightMotor = 4095;
         }
 
-        Serial.print("Left Motor: ");
-        Serial.print(receivedData.leftMotor);
-        Serial.print(" | ");
-        Serial.print("Right Motor: ");
-        Serial.println(receivedData.rightMotor);
-        ledcWrite(motorChannelLeft, receivedData.leftMotor);
-        ledcWrite(motorChannelRight, receivedData.rightMotor);
+        printStatement();
       }
-      else if(receivedData.leftMotor > 500 && receivedData.rightMotor < 500){ //right motor less than 500; left, greater
+      else if(receivedData.leftMotor > 100 && receivedData.rightMotor < 100) { //right motor less than 500; left, greater
 
         receivedData.leftMotor += 2000;
         receivedData.rightMotor = 0;
@@ -165,17 +151,13 @@ void loop()
           receivedData.leftMotor = 4095;
         }
 
-        Serial.print("Left Motor: ");
-        Serial.print(receivedData.leftMotor);
-        Serial.print(" | ");
-        Serial.print("Right Motor: ");
-        Serial.println(receivedData.rightMotor);
-        ledcWrite(motorChannelLeft, receivedData.leftMotor);
-        ledcWrite(motorChannelRight, receivedData.rightMotor);
+        printStatement();
       }
-      else{
+      else {
         ledcWrite(motorChannelLeft, 0);
         ledcWrite(motorChannelRight, 0);
+
+        printStatement();
       }
       
     }
@@ -187,4 +169,14 @@ void loop()
     Serial.println("No reply, is nrf24_server running?");
   }
   delay(100);
+}
+
+void printStatement(){
+  Serial.print("Left Motor: ");
+  Serial.print(receivedData.leftMotor);
+  Serial.print(" | ");
+  Serial.print("Right Motor: ");
+  Serial.println(receivedData.rightMotor);
+  ledcWrite(motorChannelLeft, receivedData.leftMotor);
+  ledcWrite(motorChannelRight, receivedData.rightMotor);
 }
