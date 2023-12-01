@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Accelerometer Data</title>
+    <script src="https://www.gstatic.com/firebasejs/7.19.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/7.19.1/firebase-database.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/raphael/2.3.0/raphael.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/justgage/1.6.1/justgage.min.js"></script>
+   
+    <style>
+        .container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 10vh; /* Full height of the viewport */
+        }
+    </style>
+</head>
+<body>
+    <div id = "root"></div>
+    <canvas id="myChart"></canvas>
+    <button id="resetButton">Reset Chart</button>
+    <div class="container">
+        <div id="gauge" style="width:200px; height:160px;"></div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+   
+
+    <script>
+    var firebaseConfig = {
+        apiKey: "AIzaSyBFFyscZA31a09ptrLpEMPgJp6dBDglppk",
+        authDomain: "rc-car-8e3cd.firebaseapp.com",
+        databaseURL: "https://rc-car-8e3cd-default-rtdb.firebaseio.com",
+        projectId: "rc-car-8e3cd",
+        storageBucket: "rc-car-8e3cd.appspot.com",
+        messagingSenderId: "545996566464",
+        appId: "1:545996566464:web:d74d1c1982a9e14a2f6225"
+    };
+    
+    firebase.initializeApp(firebaseConfig);
+    const ctx = document.getElementById('myChart').getContext('2d');
+        const myChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [], // This will hold the iteration number
+                datasets: [{
+                    label: 'Telemetry Data',
+                    data: [], // This will hold the value
+                    backgroundColor: 'rgba(0, 123, 255, 0.5)',
+                    borderColor: 'rgba(0, 123, 255, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                scales: {
+                    x: {
+                        type: 'linear',
+                        position: 'bottom',
+                        ticks: {
+                            stepSize: 1
+                        }
+                    },
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    
+    let i = 0;
+    let gauge = new JustGage({
+        id: 'gauge',
+        value: 0,
+        min: 0,
+        max: 1.0,
+        title: "Speedometer",
+        decimals: 2, // Number of decimals to show on the gauge
+        gaugeWidthScale: 0.6, // Adjust the thickness of the gauge if needed
+        counter: true // Whether to use a counter animation for value changes
+    });
+
+    var firebaseRef = firebase.database().ref("Sensor");
+    firebaseRef.on("value", function(snapshot) {
+        snapshot.forEach(function(element) {
+            console.log(element.val());
+            //document.getElementById('speed').innerText = element.val();
+            myChart.data.labels.push(i++);
+            myChart.data.datasets[0].data.push(element.val());
+            myChart.update();
+
+            gauge.refresh(element.val());
+
+        });
+    })
+
+    // Reset button functionality
+    document.getElementById('resetButton').addEventListener('click', function() {
+        iteration = 0; // Reset iteration counter
+
+        // Clear the chart data
+        myChart.data.labels = [];
+        myChart.data.datasets.forEach((dataset) => {
+            dataset.data = [];
+        });
+
+        myChart.update(); // Update the chart to reflect the changes
+        
+    });
+
+
+
+
+    </script>
+</body>
+</html>
